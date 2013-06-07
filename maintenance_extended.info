@@ -1,0 +1,10 @@
+name = Maintenance page extended
+description = Extended maintenance mode form
+core = 7.x
+
+dependencies[] = system
+dependencies[] = block
+dependencies[] = date
+dependencies[] = date_api
+
+configure = admin/config/development/maintenance

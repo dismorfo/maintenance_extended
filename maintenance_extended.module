@@ -1,0 +1,364 @@
+<?php
+
+/*
+ * Implements hook_cron_queue_info().
+ *
+ * https://api.drupal.org/api/drupal/modules%21system%21system.queue.inc/group/queue/7
+ * https://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_cron_queue_info/7
+ */
+function maintenance_extended_cron_queue_info() {
+  $queues['maintenance_extended_worker'] = array(
+    'worker callback' => 'maintenance_extended_worker_callback',
+    'time' => 120,
+  );
+  return $queues;
+}
+
+/**
+ * Form builder; Configure the site's maintenance status.
+ *
+ * @ingroup forms
+ * @see system_settings_form()
+ */
+function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$form_state, $form_id) {
+
+  drupal_add_css('.maintenance_extended.title {margin-top: 1em; margin-bottom: 1em;} .form-type-date-select {width: 100% !important} .form-type-date-select label { padding-left: 10px !important; margin-top: 1em !important; }', $option['type'] = 'inline');
+
+  $theme_default = variable_get('theme_default', 'bartik');
+
+  $block_regions = system_region_list($theme_default, REGIONS_VISIBLE);
+    
+  $block_regions = $block_regions + array(BLOCK_REGION_NONE => BLOCK_REGION_NONE);
+  
+  $maintenance_mode = variable_get('maintenance_mode', 0);    
+  
+  $pre_maintenance_mode = variable_get('pre_maintenance_mode', 0);  
+  
+  if ($maintenance_mode != 1 ) {
+
+    $form['maintenance_mode_message_date_range'] = array(
+      '#type' => 'date_select', 
+      '#title' => 'Date range to set site to maintenance mode', 
+      '#description' => 'date', 
+      '#date_year_range' => '0:+3',      
+      '#required' => false,
+      '#date_format' => 'Y-m-d H:M a',
+      '#date_label_position' => 'within',
+      '#default_value' => variable_get('maintenance_mode_message_date_range', NULL),
+    );    
+
+    $form['pre_maintenance_mode_container'] = array(
+      '#markup' => '<h2 class="maintenance_extended title">' . t('Pre maintenance mode options') . '</h2>',
+    );
+  
+    $form['pre_maintenance_mode_message_date'] = array(
+      '#type' => 'date_select', 
+      '#title' => 'Set when to start displaying pre maintenance mode message', 
+      '#description' => 'date', 
+      '#date_year_range' => '0:+3',      
+      '#required' => false,
+      '#date_format' => 'Y-m-d H:a',
+      '#date_label_position' => 'within',
+      '#default_value' => ($pre_maintenance_mode > 0) ? variable_get('pre_maintenance_mode_message_date', NULL) : NULL,
+    );
+    
+    $form['pre_maintenance_mode'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Check to set site into pre maintenance mode in the date specifided above'),
+      '#default_value' => $pre_maintenance_mode,
+      '#description' => t('When enabled, only users with the "Use the site in maintenance mode" <a href="@permissions-url">permission</a> are able to access your site to perform maintenance; all other visitors see the maintenance mode message configured below. Authorized users can log in directly via the <a href="@user-login">user login</a> page.', array('@permissions-url' => url('admin/people/permissions'), '@user-login' => url('user'))),
+    );
+
+    $form['pre_maintenance_mode_message'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Pre maintenance mode message'),
+      '#default_value' => maintenance_extended_pre_maintenance_mode_message(),
+      '#description' => t('Message to show visitors when the site is in maintenance mode.')
+    );
+
+    $form['pre_maintenance_mode_region'] = array(
+      '#title' => t('Region for pre maintenance mode block'),
+      '#type' => 'select',
+      '#default_value' => variable_get('pre_maintenance_mode_region', NULL),
+      '#empty_value' => BLOCK_REGION_NONE,
+      '#options' => $block_regions,
+    );  
+
+  }
+  
+  $form['#validate'][] = 'maintenance_extended_validate';
+
+}
+
+function maintenance_extended_validate(&$form, &$form_state) {
+  
+  if (!isset($form['pre_maintenance_mode'])) return;
+  
+  if ($form['pre_maintenance_mode']['#value'] == 1) {
+  
+    $now = time();
+  
+    $pre_maintenance_mode_message_date_value = strtotime(
+      $form['pre_maintenance_mode_message_date']['month']['#value'] . '/' .
+      $form['pre_maintenance_mode_message_date']['day']['#value'] . '/' .
+      $form['pre_maintenance_mode_message_date']['year']['#value'] . ' ' .    
+      $form['pre_maintenance_mode_message_date']['hour']['#value'] .
+      $form['pre_maintenance_mode_message_date']['ampm']['#value']
+    );
+    
+    if ($pre_maintenance_mode_message_date_value && $pre_maintenance_mode_message_date_value > $now) {
+      variable_set('pre_maintenance_mode_message_date', $pre_maintenance_mode_message_date_value);
+      $queue = DrupalQueue::get('maintenance_extended_worker');
+      $queue->createItem(
+        array(
+          'date' => $pre_maintenance_mode_message_date_value
+        )
+      );
+    }
+    else  {
+      form_set_error(
+        'pre_maintenance_mode_message_date',
+        t('Please provide a valid date for displayig pre maintenance mode message')
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ *
+ * This hook declares what blocks are provided by the module.
+ * https://api.drupal.org/api/drupal/modules!block!block.api.php/function/hook_block_info/7
+ */
+function maintenance_extended_block_info() {
+
+  $blocks['pre_maintenance_mode_message'] = array(
+    'info' => t('Pre maintenance mode message'),  // info: The name of the block.
+    'cache' => DRUPAL_CACHE_PER_ROLE, // Block caching options (per role, per user, etc.)
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ *
+ * This hook generates the contents of the blocks themselves.
+ */
+function maintenance_extended_block_view($delta = '') {
+  switch ($delta) {
+    case 'pre_maintenance_mode_message':
+      $block['subject'] = t('Pre maintenance mode message');
+      $block['content'] = array('#markup' => maintenance_extended_pre_maintenance_mode_message());
+      
+      break;
+  }
+  return $block;
+}
+
+/** 
+ * All things email
+ */
+
+/**
+ * Implement hook_mail().
+ *
+ * This hook defines a list of possible e-mail templates that this module can
+ * send. Each e-mail is given a unique identifier, or 'key'.
+ *
+ * $message comes in with some standard properties already set: 'to' address,
+ * 'from' address, and a set of default 'headers' from drupal_mail(). The goal
+ * of hook_mail() is to set the message's 'subject' and 'body' properties, as
+ * well as make any adjustments to the headers that are necessary.
+ *
+ * The $params argument is an array which can hold any additional data required
+ * to build the mail subject and body; for example, user-entered form data, or
+ * some context information as to where the mail request came from.
+ *
+ * Note that hook_mail() is not actually a hook. It is only called for a single
+ * module, the module named in the first argument of drupal_mail(). So it's
+ * a callback of a type, but not a hook.
+ * 
+ * taken from: http://drupalcode.org/project/examples.git/blob_plain/refs/heads/7.x-1.x:/email_example/email_example.module
+ */
+function maintenance_extended_mail($key, &$message, $params) {
+
+  global $user;
+
+  // Each message is associated with a language, which may or may not be the
+  // current user's selected language, depending on the type of e-mail being
+  // sent. This $options array is used later in the t() calls for subject
+  // and body to ensure the proper translation takes effect.
+  $options = array(
+    'langcode' => $message['language']->language,
+  );
+
+  switch ($key) {
+    // Send a simple message from the contact form.
+    case 'pre_maintenance_mode_enable':
+      $message['subject'] = t('E-mail sent from @site-name', array('@site-name' => variable_get('site_name', 'Drupal')), $options);
+      
+      // Note that the message body is an array, not a string.
+      $message['body'][] = t('@name sent you the following message:', array('@name' => $user->name), $options);
+      
+      // Because this is just user-entered text, we do not need to translate it.
+      // Since user-entered text may have unintentional HTML entities in it like
+      // '<' or '>', we need to make sure these entities are properly escaped,
+      // as the body will later be transformed from HTML to text, meaning
+      // that a normal use of '<' will result in truncation of the message.
+      $message['body'][] = check_plain($params['message']);
+      break;
+  }
+  
+}
+
+/**
+ * Sends an e-mail.
+ *
+ * @param $form_values
+ *   An array of values from the contact form fields that were submitted.
+ *   There are just two relevant items: $form_values['email'] and
+ *   $form_values['message'].
+ */
+function maintenance_extended_send($form_values) {
+
+  // All system mails need to specify the module and template key (mirrored from
+  // hook_mail()) that the message they want to send comes from.
+  $module = 'maintenance_extended';
+  
+  // what action to takes
+  $key = $form_values['key'];
+
+  // Specify 'to' addresses.
+  $to = $form_values['email'];
+  
+  // Specify 'from' addresses
+  $from = $form_values['from'];
+
+  // "params" loads in additional context for email content completion in
+  // hook_mail(). In this case, we want to pass in the values the user entered
+  // into the form, which include the message body in $form_values['message'].
+  $params = $form_values;
+
+  // The language of the e-mail. This will one of three values:
+  // * user_preferred_language(): Used for sending mail to a particular website
+  //   user, so that the mail appears in their preferred language.
+  // * global $language: Used when sending a mail back to the user currently
+  //   viewing the site. This will send it in the language they're currently
+  //   using.
+  // * language_default(): Used when sending mail to a pre-existing, 'neutral'
+  //   address, such as the system e-mail address, or when you're unsure of the
+  //   language preferences of the intended recipient.
+  //
+  // Since in our case, we are sending a message to a random e-mail address that
+  // is not necessarily tied to a user account, we will use the site's default
+  // language.
+  $language = language_default();
+
+  // Whether or not to automatically send the mail when drupal_mail() is
+  // called. This defaults to TRUE, and is normally what you want unless you
+  // need to do additional processing before drupal_mail_send() is called.
+  $send = TRUE;
+  // Send the mail, and check for success. Note that this does not guarantee
+  // message delivery; only that there were no PHP-related issues encountered
+  // while sending.
+  $result = drupal_mail($module, $key, $to, $language, $params, $from, $send);
+  
+  if ($result['result'] == TRUE) {
+    drupal_set_message(t('Your message has been sent.'));
+  }
+  else {
+    watchdog($module, t('There was a problem sending message.'), WATCHDOG_ERROR);
+    drupal_set_message(t('There was a problem sending your message and it was not sent.'), 'error');
+  }
+
+}
+
+function maintenance_extended_pre_maintenance_mode_message() {
+  return variable_get('pre_maintenance_mode_message', t('@site is currently is currently under pre maintenance.', array('@site' => variable_get('site_name', 'Drupal'))));
+}
+
+function maintenance_extended_worker_callback($data) {
+
+  // 'maintenance_mode' => 1, site maintenance_mode on
+  // global $conf;
+  // dpm($conf);
+  // dpm($data);
+  /**  
+  if ($block->status == 0) {
+    $block->status = 1;
+    $block->theme = $theme_default;      
+    $block->region = 'content';
+  }
+  */  
+  // 'status' => TRUE,
+  // 'region' => 'sidebar_first',  // Not usually provided.
+  // 'visibility' => BLOCK_VISIBILITY_LISTED,  // Not usually provided.
+  // 'pages' => 'node/*', // Not usually provided here.
+  // drupal_set_message('A block with the pre_maintenance_mode will be enable', 'status');
+  // $block = block_load('maintenance_extended','pre_maintenance_mode_message');
+  // dpm($block);
+  // dpm( system_region_list($theme_default) );
+  // -1
+
+
+  drush_print_r($data);
+
+  $pre_maintenance_mode = variable_get('pre_maintenance_mode', 0);
+
+  $maintenance_mode = variable_get('maintenance_mode', 0);  
+  
+  $pre_maintenance_mode_message_date = variable_get('pre_maintenance_mode_message_date');
+    
+  $pre_maintenance_mode_date = 
+    $pre_maintenance_mode_message_date['month'] . '/' . 
+    $pre_maintenance_mode_message_date['day'] . '/' . 
+    $pre_maintenance_mode_message_date['year']
+  ;
+  
+  $now = time();
+  
+  /**
+   * If the site in pre maintenance mode status
+   */
+  if ($pre_maintenance_mode == 1) {
+
+    /**
+     * If the site in maintenance mode status, disable pre maintenance mode
+     */
+    if ($maintenance_mode == 1) {
+      variable_set('pre_maintenance_mode', 0);
+      return;
+    }
+
+    if ($now > $pre_maintenance_mode_date) {
+      //return;
+
+      /**
+       * Disable pre maintenance mode
+       */    
+      //variable_set('pre_maintenance_mode', 0);
+
+      /**
+       * Enable maintenance mode
+       */    
+      //variable_set('maintenance_mode', 1);
+
+    }
+
+  }
+  
+  /**
+   * Check if site should be set in pre maintenance mode status
+   */
+  if (
+    $maintenance_mode == 0 
+    && 
+    $pre_maintenance_mode == 1 
+    && 
+    $now > $pre_maintenance_mode_date
+  ) {
+
+  }
+  
+}

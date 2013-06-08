@@ -1,0 +1,18 @@
+#edit-maintenance-mode-message-date-range-start,
+#edit-maintenance-mode-message-date-range-end,
+#edit-pre-maintenance-mode-message-date {
+	width: 100%;
+}
+
+.maintenance_extended.title {
+	margin-top: 1em; margin-bottom: 1em;
+}
+
+.form-type-date-select {
+	width: 100% !important
+}
+
+.form-type-date-select label { 
+	padding-left: 10px !important; 
+	margin-top: 1em !important; 
+}

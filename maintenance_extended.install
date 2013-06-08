@@ -1,0 +1,10 @@
+<?php
+
+function maintenance_extended_uninstall() {
+  variable_del('pre_maintenance_mode_on');
+  variable_del('pre_maintenance_mode_message_date');
+  variable_del('pre_maintenance_mode_message');
+  variable_del('pre_maintenance_mode_region');
+  variable_del('maintenance_mode_message_date_range_start');
+  variable_del('maintenance_mode_message_date_range_end');
+}

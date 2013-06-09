@@ -7,21 +7,21 @@
  * @see system_settings_form()
  */
 function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$form_state, $form_id) {
-	
+  
   drupal_add_css(
     drupal_get_path('module', 'maintenance_extended') . '/css/maintenance_extended.css', 
     array(
       'group' => CSS_DEFAULT, 
     )
   );
-	
+  
   // available regions for the default theme
   $block_regions = system_region_list(
     variable_get('theme_default', 'bartik'),
     REGIONS_VISIBLE
   );
 
-	// "none" region as the default selection
+  // "none" region as the default selection
   $block_regions = $block_regions + array(BLOCK_REGION_NONE => BLOCK_REGION_NONE);
   
   // maintenance mode status
@@ -30,24 +30,24 @@ function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$
   // pre-maintenance mode status
   $pre_maintenance_mode_on = variable_get('pre_maintenance_mode_on', 0);
 
-	// copy maintenance_mode field; will be use later on
+  // copy maintenance_mode field; will be use later on
   $maintenance_mode = $form['maintenance_mode'];
 
   // copy maintenance_mode_message field; will be use later on
   $maintenance_mode_message = $form['maintenance_mode_message'];
 
-	// remove maintenance_mode field from form
+  // remove maintenance_mode field from form
   unset($form['maintenance_mode']);
 
   // remove maintenance_mode_message from form
   unset($form['maintenance_mode_message']);
-	
-	// site is not running in maintenance mode
+  
+  // site is not running in maintenance mode
   if ($maintenance_mode['#default_value'] == 0) {
 
     /**
-		 * add pre-maintenance mode fields
-		 */ 
+     * add pre-maintenance mode fields
+     */ 
     
     $form['pre_maintenance_mode_container'] = array(
       '#markup' => '<h2 class="maintenance_extended title">' . t('Pre maintenance mode options') . '</h2>',
@@ -100,7 +100,7 @@ function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$
   // add copy of field maintenance_mode_message back to the form
   $form['maintenance_mode_message'] = $maintenance_mode_message;
   
-	if ($maintenance_mode['#default_value'] == 0) {
+  if ($maintenance_mode['#default_value'] == 0) {
     $form['maintenance_mode_message_date_range_start'] = array(
       '#type' => 'date_select', 
       '#title' => 'Date and time to set site to maintenance mode', 
@@ -124,11 +124,11 @@ function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$
     '#default_value' => variable_get('maintenance_mode_message_date_range_end', NULL),
   );      
   
-	// add a validation callback
+  // add a validation callback
   $form['#validate'][] = '_maintenance_extended_validate';
-	
-	// add a submit callback
-  $form['#submit'][] = '_maintenance_extended_submit';	
+  
+  // add a submit callback
+  $form['#submit'][] = '_maintenance_extended_submit';  
 
 }
 
@@ -136,32 +136,34 @@ function maintenance_extended_form_system_site_maintenance_mode_alter(&$form, &$
  * Validates date and make sure schedule event is in the future
  */
 function _maintenance_extended_schedule_validate($element, &$form_state) {
-	
-	if (isset($form_state['values'][$element])) {
-	
+  
+  if (isset($form_state['values'][$element])) {
+  
+    $now = time();
+  
     // get the UNIX timestamp
-		$strtotime_date = strtotime(
+    $strtotime_date = strtotime(
       $form_state['values'][$element]
-		);
-		
-		// set form error 
-		if (
-		  !$strtotime_date // not a timestamp
-		  || // OR 
-		  (
-		    $strtotime_date // is a timestamp 
-		    && // AND 
-		    $strtotime_date < time() // user is trying to schedule in the past
-		  )
-	  ) 
-	  {
+    );
+    
+    // set form error 
+    if (
+      !$strtotime_date // not a timestamp
+      || // OR 
+      (
+        $strtotime_date // is a timestamp 
+        && // AND 
+        $strtotime_date < $now // user is trying to schedule in the past
+      )
+    ) 
+    {
       form_set_error($element, t('Please provide a valid date for displayig pre maintenance mode message'));
-		}
-    else 
-		{
-  	  return $strtotime_date; // return timestamp 
     }
-	}
+    else 
+    {
+      return $strtotime_date; // timestamp 
+    }
+  }
 
 }
 
@@ -169,48 +171,48 @@ function _maintenance_extended_schedule_validate($element, &$form_state) {
  * Form validations and block actions
  */
 function _maintenance_extended_validate(&$form, &$form_state) {
-	
+  
   // if site is set to maintenance_mode there is no need to validate or 
   // hold any of the extended values in {variable} table
   if ($form['maintenance_mode']['#value'] > 0) {
     $form_state['values']['pre_maintenance_mode_on'] = 0;
     $form_state['values']['pre_maintenance_mode_message_date'] = NULL;
-		$form_state['values']['maintenance_mode_message_date_range_start'] = NULL;
-		return;
+    $form_state['values']['maintenance_mode_message_date_range_start'] = NULL;
+    return;
   }
-	
-	// validate pre-maintenance mode message was schedule
-	_maintenance_extended_schedule_validate('pre_maintenance_mode_message_date', $form_state);
+  
+  // validate pre-maintenance mode message was schedule
+  _maintenance_extended_schedule_validate('pre_maintenance_mode_message_date', $form_state);
 
-	// maintenance mode start was schedule
-	_maintenance_extended_schedule_validate('maintenance_mode_message_date_range_start', $form_state);
-	
-	// maintenance mode end was schedule
-	_maintenance_extended_schedule_validate('maintenance_mode_message_date_range_end', $form_state);	
-	
+  // maintenance mode start was schedule
+  _maintenance_extended_schedule_validate('maintenance_mode_message_date_range_start', $form_state);
+  
+  // maintenance mode end was schedule
+  _maintenance_extended_schedule_validate('maintenance_mode_message_date_range_end', $form_state);  
+  
   if (
     isset($form['pre_maintenance_mode_on']) // pre_maintenance_mode_on is available 
     && //AND
     $form['pre_maintenance_mode_on']['#value'] > 0) // site is running on pre-maintenance mode
   {
     $form_state['values']['pre_maintenance_mode_message_date'] = NULL; // resent schedule
-	}
+  }
   
 }
 
 function _maintenance_extended_submit(&$form, &$form_state) {
-	
-	$edit = array();	
+  
+  $edit = array();  
 
   // Block status
-	$edit['status'] = (isset($form_state['values']['pre_maintenance_mode_on'])) ? $form_state['values']['pre_maintenance_mode_on'] : 0;
-	
-	// Block region
-	if (isset($form_state['values']['pre_maintenance_mode_region'])) {
+  $edit['status'] = (isset($form_state['values']['pre_maintenance_mode_on'])) ? $form_state['values']['pre_maintenance_mode_on'] : 0;
+  
+  // Block region
+  if (isset($form_state['values']['pre_maintenance_mode_region'])) {
     $edit['region'] = $form_state['values']['pre_maintenance_mode_region'];
-	}
-	
-	// update block
+  }
+  
+  // update block
   maintenance_extended_block_save('pre_maintenance_mode_message', $edit);
 
 }
@@ -268,40 +270,38 @@ function maintenance_extended_block_save($delta = '', $edit = array()) {
 
 }
 
-/**
- * Implementation of hook_cron 
- * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_cron/7
- */
-function maintenance_extended_cron() {
-	
-  $now = time();
-	
-	$edit = array();
-  
-  $pre_maintenance_mode_on = variable_get('pre_maintenance_mode_on', 0);
-	
-	$pre_maintenance_mode = variable_get('pre_maintenance_mode', 0);
+function maintenance_extended_go_offline() {
 
-  $pre_maintenance_mode_scheduled = variable_get('pre_maintenance_mode', 0); 
-  
-  $maintenance_mode = variable_get('maintenance_mode', 0);
+  try {
+    // remove pre-maintenance mode message if active
+    $edit = array(
+      'status' => 0, // disable the block
+    );
+    
+    maintenance_extended_block_save('pre_maintenance_mode_message', $edit);
+    
+    // go off-line
+    variable_set('maintenance_mode', 1);
 
-  $pre_maintenance_mode_message_date = strtotime(variable_get('pre_maintenance_mode_message_date', NULL));
-	
-	$maintenance_mode_message_date_range_start = strtotime(variable_get('maintenance_mode_message_date_range_start', NULL));
-	
-	$maintenance_mode_message_date_range_end = strtotime(variable_get('maintenance_mode_message_date_range_end', NULL));
-	
-	// if check if site is running on maintenance mode and if is time 
-	// to bring back the site online
-  if (
-    $maintenance_mode == 1 // site is running on maintenance mode 
-    && // AND
-    $now > $maintenance_mode_message_date_range_end// is time to come back online
-  )
-	{
-		
-		// bring back the site online
+    // clean any possible left over
+    variable_del('pre_maintenance_mode_on');
+    variable_del('pre_maintenance_mode_message_date');
+    variable_del('pre_maintenance_mode_message');
+    variable_del('pre_maintenance_mode_region');
+    variable_del('maintenance_mode_message_date_range_start');
+  }
+  
+  catch (Exception $e) {
+    return FALSE;
+  }
+  
+  return TRUE;
+}
+
+function maintenance_extended_go_online() {
+
+  try {
+    // bring back the site online
     variable_set('maintenance_mode', 0);
 
     // clean any possible left over
@@ -311,41 +311,64 @@ function maintenance_extended_cron() {
     variable_del('pre_maintenance_mode_region');
     variable_del('maintenance_mode_message_date_range_start');
     variable_del('maintenance_mode_message_date_range_end');
-		
+  }
+  
+  catch (Exception $e) {
+    return FALSE;
+  }
+  
+  return TRUE;
+
+}
+
+/**
+ * Implementation of hook_cron 
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_cron/7
+ */
+function maintenance_extended_cron() {
+  
+  $now = time();
+
+  $edit = array();
+  
+  $pre_maintenance_mode_on = variable_get('pre_maintenance_mode_on', 0);
+  
+  $pre_maintenance_mode = variable_get('pre_maintenance_mode', 0);
+
+  $pre_maintenance_mode_scheduled = variable_get('pre_maintenance_mode', 0); 
+
+  $maintenance_mode = variable_get('maintenance_mode', 0);
+
+  $pre_maintenance_mode_message_date = strtotime(variable_get('pre_maintenance_mode_message_date', NULL));
+  
+  $maintenance_mode_message_date_range_start = strtotime(variable_get('maintenance_mode_message_date_range_start', NULL));
+  
+  $maintenance_mode_message_date_range_end = strtotime(variable_get('maintenance_mode_message_date_range_end', NULL));
+  
+  // if check if site is running on maintenance mode and if is time 
+  // to bring back the site online
+  if (
+    $maintenance_mode == 1 // site is running on maintenance mode 
+    && // AND
+    $now > $maintenance_mode_message_date_range_end// is time to come back online
+  )
+  {
+    maintenance_extended_go_online();
     return;
+  } 
 
-	}	
-
-	// if check if site is not running on maintenance mode and if is time 
-	// to go off-line
+  // if check if site is not running on maintenance mode and if is time 
+  // to go off-line
   if (
     $maintenance_mode == 0 // site is not running on maintenance mode 
     && // AND
     $now > $maintenance_mode_message_date_range_start// is time to go off-line
   )
-	{
-		
-		// remove pre-maintenance mode message if active
-		$edit = array(
-		  'status' => 0, // disable the block
-		);
-		
-    maintenance_extended_block_save('pre_maintenance_mode_message', $edit);
-		
-		// go off-line
-    variable_set('maintenance_mode', 1);
-
-    // clean any possible left over
-    variable_del('pre_maintenance_mode_on');
-    variable_del('pre_maintenance_mode_message_date');
-    variable_del('pre_maintenance_mode_message');
-    variable_del('pre_maintenance_mode_region');
-    variable_del('maintenance_mode_message_date_range_start');
-		
+  {
+    maintenance_extended_go_offline(); 
     return;
-
-	}
-	
+  }
+  
   if (
     $maintenance_mode == 0 // site is not running on maintenance mode 
     &&
@@ -354,22 +377,22 @@ function maintenance_extended_cron() {
     $now > $pre_maintenance_mode_message_date // pre-maintenance mode has been schedule
   ) 
   {
-  	
-		$pre_maintenance_mode_region = variable_get('pre_maintenance_mode_region', BLOCK_REGION_NONE);
-		
-		$edit = array(
-		  'status' => 1, // enable the block
-		  'region' => $pre_maintenance_mode_region, // set the region
-		);
+    
+    $pre_maintenance_mode_region = variable_get('pre_maintenance_mode_region', BLOCK_REGION_NONE);
+    
+    $edit = array(
+      'status' => 1, // enable the block
+      'region' => $pre_maintenance_mode_region, // set the region
+    );
 
-		maintenance_extended_block_save('pre_maintenance_mode_message', $edit);
-		
-		variable_set('pre_maintenance_mode_on', 1);
+    maintenance_extended_block_save('pre_maintenance_mode_message', $edit);
+    
+    variable_set('pre_maintenance_mode_on', 1);
 
-		variable_set('pre_maintenance_mode_message_date', NULL);
-		
-		return;
-		
+    variable_set('pre_maintenance_mode_message_date', NULL);
+    
+    return;
+    
   }
 
 }
